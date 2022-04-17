@@ -1,0 +1,286 @@
+---
+title: "Predicting Condominium Sale Prices"
+author: "Abe Ceasar Perez"
+date: "April 15, 2022"
+output: html_document
+---
+
+### Forecasting Condominium Sales in New York City
+
+This project aims to determine how well the size of a condominum predicts sale price across New York City as a whole and per borough. Specifically, we'll be exploring property sales data for all five boroughs in new york and build models to understand the relationship beteen condominium size and sales price.
+
+In addition to the objectives above, we'll be applying the following concepts in this project:
+
+- Bivariate Relationships
+- Fitting Linear Models
+- Assessing Model Accuracy
+
+### Initial Findings
+
+Based on the initial results of this project, we were able to predict sales price using condominium sizes. We were also able to determine that condominium sizes tend to have a varying relationship with sales price across all the give boroughs.
+
+To learn more about the results, we have outlined the process below:
+
+### Loading the data
+
+We'll first start by loading the packages for our project before loading our main dataset. The dataset that we'll be using contains data on the New York Property Sales with over 38,000 rows and 20 columns. This dataset can be downloaded here:
+<https://data.world/dataquest/nyc-property-sales-data>
+
+```{r load_data, echo=TRUE, warning=FALSE}
+
+# loads the functions without startup messages
+suppressPackageStartupMessages(library(broom)) # for splitting the dataset by categories
+suppressPackageStartupMessages(library(ggplot2)) # for generating charts
+suppressPackageStartupMessages(library(tidyr)) # for cleaning the data
+suppressPackageStartupMessages(library(dplyr)) # for loading additional functions
+suppressPackageStartupMessages(library(readr)) # for reading/formatting the data
+suppressPackageStartupMessages(library(purrr)) # for mapping functions
+
+filename <- "NYC_property_sales.csv"
+
+# loads the property sales data without column messages
+NYC_property_sales <- read_csv(filename, show_col_types = FALSE) 
+
+dim(NYC_property_sales) # prints the rows and columns of the dataset
+
+head(NYC_property_sales) # first five rows of the dataset
+
+```
+
+### Visualizing the Relationship between Condominium Size and Sale Price
+
+Next, we'll be using scatter plots to visualize the relationship of our variables of interest for all boroughs. We'll be filtering out the data for "condominium with elevators" and visualize the relationship as a whole.
+
+Looking in the plot below, we can see that the direction of the condominium variables seems to be going upwards. It is however difficult to say that the relationship is linear given the two outliers which have a sale price of over $200M. Strength of the relationship is also unclear since both of the outliers have driven the estimate of the relationship.
+
+```{r scatter_all, echo=TRUE, warning=FALSE}
+
+# filter out condos with elevators
+NYC_condos <- NYC_property_sales %>% filter(building_class_at_time_of_sale == "R4") 
+
+NYC_condos %>% 
+  ggplot(aes(x=gross_square_feet, y=sale_price)) + 
+  geom_point(alpha=0.5) + # makes all points transparent
+  geom_smooth(method="lm", se=FALSE) + # adds a linear regression line between all points
+  scale_x_continuous(labels = scales::comma) + # change axis format to add commas in square feet
+  scale_y_continuous(labels = scales::comma) + # change axis format to add commas in sale prices
+  labs(title="Relationship bet. Condominium Size and Price for all Boroughs",
+       x="Gross Square Feet", 
+       y="Sale Price in $") 
+
+```
+
+Using the same code above, we'll also look into the relationship of our variables per borough. Based on the plots below, we can see that the relationship is still linear for most of the boroughs although Brooklyn tends to have a lower strength of relationship. We can also see here that boroughs excluding Staten Island have outliers, thus, it is still unclear whether the relationship is really positive or not.
+
+```{r scatter_per_borough, echo=TRUE, warning=FALSE}
+
+NYC_condos %>% 
+  ggplot(aes(x=gross_square_feet, y=sale_price)) + 
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm", se=FALSE) + 
+  facet_wrap(vars(borough), scales = "free", ncol=2) + # creates separate plots by borough and corresponding to the respective axis ranges
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title="Relationship bet. Condominium Size and Price per Borough",x="Gross Square Feet", y="Sale Price in $") 
+
+```
+
+### Eliminating Erroneous Data
+
+Looking at the overall scatter plot earlier, we can see that the two of the significant outliers are actually the highest-priced condos in New York City. Since these data points significantly drive the strength and direction of the variables' relationship, we'll be removing these data points from our dataset
+
+```{r rm_outliers, echo=TRUE, warning=FALSE}
+
+NYC_condos_orig <- NYC_condos # keeps a copy of the original dataset
+
+# prints the sale price of the condos
+subset(NYC_condos_orig, address == "165 East 66th St, Resi")$sale_price
+subset(NYC_condos_orig, address == "220 Central Park South, 50")$sale_price
+
+NYC_condos <- NYC_condos %>% filter(!(address %in% c("165 East 66th St, Resi", "220 Central Park South, 50"))) # removes the top-priced condos
+
+head(NYC_condos)
+
+```
+
+Apart from outliers, we've also learned that some of the units are purchased in a single transaction - because of this, the total sale price is recorded for each transaction instead of the individual sale price. Since this will have an unintended effect on the strength and direction of the variables' relationship, we'll also remove these datapoints from our dataset.
+
+```{r rm_multiple_transact, echo=TRUE, warning=FALSE}
+
+multi_unit_sales <- NYC_condos %>% group_by(sale_date, sale_price) %>% summarize(records = n()) %>% filter(records >= 3) # filter out all transactions for three or more units
+
+NYC_condos <- NYC_condos %>% anti_join(multi_unit_sales[,-3]) # removes all units with three or more transactions based on the sale date and the sale price
+
+```
+
+### Fitting our Linear Models
+
+Now that we've cleaned our data, we'll now proceed with fitting the linear models before and after cleaning the data. Our hypothesis for this problem is to test whether or not the size of a condo has a significant relationship with the condo's sale price. Based on the results below,
+
+- The t-value is significantly large (61.39 before cleaning and 112,75 after cleaning) compared to the t-value of rejection (~2.4)
+- The p-value is very small (<2e-16 for both before and after cleaning) compared to the p-value of rejection which is 0.05.
+
+Based on the results above, we can say that condo size is indeed a significant predictor of the condo sale price for before and after cleaning the dataset.
+
+```{r hypo_testing, echo=TRUE, warning=FALSE}
+
+NYC_condos_orig_lm <- lm(sale_price~gross_square_feet, data = NYC_condos_orig)
+summary(NYC_condos_orig_lm) # fits and summarizes the linear model of the dataset prior to removing erroneous data
+
+NYC_condos_lm <- lm(sale_price~gross_square_feet, data = NYC_condos)
+summary(NYC_condos_lm) # fits and summarizes the linear model of the dataset after removing erroneous data
+
+```
+
+In terms of the confidence interval of the condo size, we can see that the interval became much larger after cleaning the dataset compared to before. Since we have eliminated the high values of sale price, we can indeed expect the mean sale price to increase much higher per square feet based on the remaining sale prices in the dataset.
+
+```{r conf_int, echo=TRUE, warning=FALSE}
+
+confint(NYC_condos_orig_lm)[2,] # spread of sale price before removing erroneous data
+confint(NYC_condos_lm)[2,] # spread of sale price after removing erroneous data
+
+```
+
+Similar to the results above, we can see the effect of removing outliers based on the RSE of the linear models. Since the RSE of the model was greatly reduced after cleaning the data, this would mean that the outliers are indeed driving the models to further cause more errors in prediction.
+
+```{r sigma_lm, echo=TRUE, warning=FALSE}
+
+sigma(NYC_condos_orig_lm) # RSE of the model prior to the removal of erroneous data
+sigma(NYC_condos_lm) # RSE of the model after the removal of erroneous data
+
+```
+
+Lastly, we'll also check if there are any changes in the fitness of the model. Based on the results below, we can see that the post-cleaned model gave a better fit compared to the pre-cleaned model due to a higher yielded accuracy. This indicates again how important data cleaning is in properly and adequately fitting a model.
+
+```{r rsquared, echo=TRUE, warning=FALSE}
+
+summary(NYC_condos_orig_lm)$r.squared # R-squared of the model prior to the removal of erroneous data
+summary(NYC_condos_lm)$r.squared # R-squared of the model prior to the removal of erroneous data
+
+```
+
+### Revised Scatter Plots per Borough
+
+Since we've determined that the data cleaning process contributed to the improvement of the models, we'll plot again the data from the cleaned dataset to visualize the changes made after cleaning the dataset.
+
+Based on the results below, we can see some improvements on some of the boroughs such as Bronx, Manhattan, and Staten Island. Although Brooklyn and Queens still have some outliers, the direction of their relationships are still clear and trending upwards.
+
+```{r new_scatter, echo=TRUE, warning=FALSE}
+
+# generating scatterplots per borough from the cleaned dataset
+NYC_condos %>% ggplot(aes(x=gross_square_feet, y=sale_price)) + 
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm", se=FALSE) + 
+  facet_wrap(vars(borough), scales = "free", ncol=2) + 
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title="Linear Models for all Condominiums per Borough",x="Gross Square Feet", y="Sale Price in $") 
+
+```
+
+### Creating Many Linear Models
+
+Earlier, the linear models that we've created are based on the overall data for all boroughs in New York City. Since we wanted as well to predict prices for each borough, we'll be creating linear models for each borough mentioned.
+
+We'll first start by nesting our dataframes by boroughs in order to generate linear models for each borough:
+
+```{r nesting, echo=TRUE, warning=FALSE}
+
+library(broom) # for nesting dataframes
+library(purrr) # for mapping functions
+
+NYC_nested <- NYC_condos %>% group_by(borough) %>% nest # segregates various dataframes by borough and combines it into one dataframe
+NYC_nested
+
+```
+
+To check if the data is indeed present, we'll be printing a sample sales dataframe for Queens:
+
+```{r nest_data_check, echo=TRUE, warning=FALSE}
+
+NYC_nested$data[[4]] # outputs the dataframe for Queens
+
+```
+
+Next we'll be fitting a linear model for each of the dataframes for each borough and add it to the nested dataframe:
+
+```{r fit_many_models, echo=TRUE, warning=FALSE}
+
+NYC_coefficients <- NYC_nested %>% mutate(linear_model = map(data, ~lm(sale_price~gross_square_feet, data=.))) # fit a model for each borough and add it to the nested dataframe
+
+NYC_coefficients
+
+```
+
+To test the success of the output, we'll also be printing the summary of the linear model for Queens:
+
+```{r fit_many_models_sample, echo=TRUE, warning=FALSE}
+
+summary(NYC_coefficients$linear_model[[4]]) # linear model for Queens
+
+```
+
+We'll then be extracting the coefficients of each linear model in each borough and add it to the nested dataframe:
+
+```{r coefficients_model, echo=TRUE, warning=FALSE}
+
+# extracts all model coefficients including the confidence interval
+NYC_coefficients_tidy <- NYC_coefficients %>% mutate(tidied_coef = map(linear_model, tidy, conf.int=TRUE)) 
+NYC_coefficients_tidy
+
+```
+
+To test the success of the output, we'll also be printing the coefficients of the linear model for Queens:
+
+```{r coefficients_model_sample, echo=TRUE, warning=FALSE}
+
+NYC_coefficients_tidy$tidied_coef[[4]] # model coefficients for the linear model of Queen's
+
+```
+
+Lastly, we'll be summarizing further the nested dataframe by unnesting only the needed model coefficients and filtering only the estimates made by the model.
+
+Looking into the results below, we can see that condo sale price increases significantly for each square foot of a condo for boroughs such as Brooklyn and Manhattan. Boroughs such as Staten Island, on the other hand showed a minimal effect for each square foot of a condo in determining the sale price of the condo.
+
+```{r model_estimates, echo=TRUE, warning=FALSE}
+
+unnested_tidy <- NYC_coefficients_tidy %>% 
+  select(borough, tidied_coef) %>% 
+  unnest(cols=tidied_coef) # expands the model coefficients into individual columns
+
+# includes only the model coefficients of the slope of the model (square feet)
+unnested_tidy_slopes <- unnested_tidy %>% filter(term=="gross_square_feet") 
+
+unnested_tidy_slopes
+
+```
+
+To assess how well our linear models will predict condo sale prices, we'll also be fitting our linear models individually per borough. We'll start by extracting our model performance estimates for each of our created linear models
+
+```{r model_glance, echo=TRUE, warning=FALSE}
+
+# extracts the model performance estimates for each linear model
+NYC_coefficients_glance <- NYC_coefficients %>% mutate(tidied_coef = map(linear_model, glance, conf.int=TRUE)) 
+
+NYC_coefficients_glance$tidied_coef[[4]] # prints a sample of our performance estimates for Queens
+
+```
+
+We'll then expand these estimates into individual columns to compare each estimate for each borough. Based on the r-squared and adjusted r-squared, both Manhattan and Bronx had a better fit for condo size in predicting sale price. Other boroughs, on the other hand tend to have varying model accuracies - most of them which might be driven by outliers or other erroneous data.
+
+```{r model_glance_unnest, echo=TRUE, warning=FALSE}
+
+# expands the model performance estimates into individual columns
+unnested_glance <- NYC_coefficients_glance %>% select(borough, tidied_coef) %>% unnest(cols=tidied_coef) 
+unnested_glance
+
+```
+
+### Conclusion
+
+The aim of this project is to predict the sale price of Condominium across New York City based on the length or square feet of the condominium. We were able to further simplify the data in order to ensure that our models are accurate and reflective of the totality of the data.
+
+Based on the results above, we we're able to fit a better model of sale price and gross square feet after removing unwanted data. We also determined that condo prices can vary per condo size across boroughs (with Manhattan having a higher cost of condos per square feet). Predicting condo prices can also be a challenge as well since some boroughs are able to predict sale price better compared to other boroughs.
+
+<br>
+<br>
