@@ -1,7 +1,6 @@
 ---
 title: "Predicting Condominium Sale Prices"
 author: "Abe Ceasar Perez"
-date: "April 15, 2022"
 output: html_document
 ---
 
@@ -9,7 +8,7 @@ output: html_document
 
 This project aims to determine how well the size of a condominum predicts sale price across New York City as a whole and per borough. Specifically, we'll be exploring property sales data for all five boroughs in new york and build models to understand the relationship beteen condominium size and sales price.
 
-In addition to the objectives above, we'll be applying the following concepts in this project:
+For this project, the following concepts were applied in order to accomplish the objectives above:
 
 - Bivariate Relationships
 - Fitting Linear Models
